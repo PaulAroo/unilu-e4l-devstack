@@ -1,0 +1,27 @@
+# version: "3.5"
+
+services:
+  e4l-backend-prod:
+    restart: always
+    image: ${CI_REGISTRY_IMAGE}:latest
+    container_name: e4l-backend-prod
+    ports:
+      - "8085:8080"
+    environment:
+      - DEV_SPRING_DATASOURCE_URL=${DEV_SPRING_DATASOURCE_URL}
+      - DEV_RESOURCES_STATIC_URL=${DEV_RESOURCES_STATIC_URL}
+      - DEV_SPRING_DATASOURCE_USERNAME=${DEV_SPRING_DATASOURCE_USERNAME}
+      - DEV_SPRING_DATASOURCE_PASSWORD=${DEV_SPRING_DATASOURCE_PASSWORD}
+      - MYSQL_USERNAME=${MYSQL_USERNAME}
+      - MYSQL_PASSWORD=${MYSQL_PASSWORD}
+      - JWT_SECRET=${JWT_SECRET}
+      - SIGNATURE_KEY=${SIGNATURE_KEY}
+      - ADMIN_EMAIL=${ADMIN_EMAIL}
+      - ADMIN_PASSWORD=${ADMIN_PASSWORD}
+      - TZ=Europe/Luxembourg
+    networks:
+      - e4l-db-net
+
+networks:
+  e4l-db-net:
+    external: true

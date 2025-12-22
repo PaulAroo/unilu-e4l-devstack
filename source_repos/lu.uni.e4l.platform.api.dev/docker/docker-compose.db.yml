@@ -1,0 +1,52 @@
+# version: "3.5"
+
+services:
+  # --- Staging DB ---
+  e4l-db-staging:
+    image: mariadb:10.4.7
+    container_name: e4l-db-staging
+    restart: always
+    volumes:
+      - e4l-db-staging-data:/var/lib/mysql
+      - ${DUMP_DIR:-./dumps}:/dumps
+    environment:
+      # same root password for both DBs is fine
+      MYSQL_ROOT_PASSWORD: ${MYSQL_PASSWORD}
+      MYSQL_DATABASE: e4l_staging
+      MYSQL_USER: ${MYSQL_USERNAME}
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD}
+      MYSQL_ROOT_HOST: '%'
+      TZ: Europe/Luxembourg
+    networks:
+      e4l-db-net:
+        aliases:
+          - e4l-db-staging
+
+  # --- Production DB ---
+  e4l-db-prod:
+    image: mariadb:10.4.7
+    container_name: e4l-db-prod
+    restart: always
+    volumes:
+      - e4l-db-prod-data:/var/lib/mysql
+      - ${DUMP_DIR:-./dumps}:/dumps
+    environment:
+      MYSQL_ROOT_PASSWORD: ${MYSQL_PASSWORD}
+      MYSQL_DATABASE: e4l_prod
+      MYSQL_USER: ${MYSQL_USERNAME}
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD}
+      MYSQL_ROOT_HOST: '%'
+      TZ: Europe/Luxembourg
+    networks:
+      e4l-db-net:
+        aliases:
+          - e4l-db-prod
+
+volumes:
+  e4l-db-staging-data:
+  e4l-db-prod-data:
+
+networks:
+  e4l-db-net:
+    name: e4l-db-net
+    external: true

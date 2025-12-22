@@ -1,0 +1,179 @@
+variables:
+  GRADLE_OPTS: "-Dorg.gradle.daemon=false"
+
+stages:
+  - build
+  - test           # unit + integration
+  - package
+  - deploy_staging         # deploy to staging
+  - acceptance-tests  # API + E2E tests on staging
+  - deploy_production          # deploy to production
+
+# 1. Build the JAR
+build_job:
+  rules:
+    - if: $CI_PIPELINE_SOURCE == 'merge_request_event'
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+  image: gradle:8.3
+  stage: build
+  script: gradle --build-cache clean build bootJar
+  cache:
+    key: "$CI_COMMIT_REF_NAME"
+    policy: push
+    paths:
+      - build
+      - .gradle
+  artifacts:
+    paths:
+      - build/libs/*.jar
+    expire_in: 1 hour
+
+# 2a. Run Unit Tests
+unit_tests:
+  rules:
+    - if: $CI_PIPELINE_SOURCE == 'merge_request_event'
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+  image: gradle:8.3
+  stage: test
+  script: gradle clean test
+  cache:
+    key: "$CI_COMMIT_REF_NAME"
+    policy: pull
+    paths:
+      - build
+      - .gradle
+  artifacts:
+    when: always
+    reports:
+      junit: build/test-results/test/**/TEST-*.xml
+
+# 2b. Integration tests (backend+DB(H2), separate Gradle task)
+integration_tests:
+  rules:
+    - if: $CI_PIPELINE_SOURCE == 'merge_request_event'
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+  image: gradle:8.3
+  stage: test
+  script: gradle integrationTest
+  cache:
+    key: "$CI_COMMIT_REF_NAME"
+    policy: pull
+    paths:
+      - build
+      - .gradle
+  artifacts:
+    when: always
+    reports:
+      junit: build/test-results/integrationTest/**/TEST-*.xml
+
+# 3. Build & Push Docker Image
+docker_build:
+  rules:
+    - if: $CI_PIPELINE_SOURCE == 'merge_request_event'
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+  stage: package
+  image: docker:29.0.1
+  variables:
+    DOCKER_HOST: "unix:///var/run/docker.sock"
+    DOCKER_TLS_CERTDIR: ""
+    CI_REGISTRY: "localhost:5050"
+  before_script:
+    - echo "$CI_REGISTRY_PASSWORD" | docker login -u "$CI_REGISTRY_USER" --password-stdin "$CI_REGISTRY"
+  script:
+    - docker build -t $CI_REGISTRY/testdev/backend:$CI_COMMIT_SHORT_SHA -t $CI_REGISTRY/testdev/backend:latest .
+    - docker push $CI_REGISTRY/testdev/backend:$CI_COMMIT_SHORT_SHA
+    - docker push $CI_REGISTRY/testdev/backend:latest
+  cache:
+    key: "$CI_COMMIT_REF_NAME"
+    policy: pull
+    paths:
+      - build
+      - .gradle
+
+# 4. Deploy to Staging
+deploy_staging:
+  rules:
+    - if: $CI_PIPELINE_SOURCE == 'merge_request_event'
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+  stage: deploy_staging
+  image: docker:29.0.1
+  variables:
+    DOCKER_HOST: "unix:///var/run/docker.sock"
+    DOCKER_TLS_CERTDIR: ""
+    CI_REGISTRY: "localhost:5050"
+  before_script:
+    - echo "$CI_REGISTRY_PASSWORD" | docker login -u "$CI_REGISTRY_USER" --password-stdin "$CI_REGISTRY"
+    # create network if does not exist
+    - docker network create e4l-db-net || true
+  script:
+    - echo "Deploying to Staging..."
+    - docker pull $CI_REGISTRY/testdev/backend:latest
+    - export BACKEND_IMAGE=$CI_REGISTRY/testdev/backend:latest
+    - cp docker/.env.staging docker/.env
+    - cd docker
+    - docker compose -f docker-compose.db.yml up -d
+    - docker compose -f docker-compose.backend.staging.yml up -d --force-recreate
+  environment:
+    name: staging
+    url: http://localhost:8084
+
+
+e2e_acceptance_tests:
+  stage: acceptance-tests
+  needs: ["deploy_staging"]
+  image: docker:29.0.1
+  variables:
+    DOCKER_HOST: "unix:///var/run/docker.sock"
+    # The internal container name + internal port (8080)
+    STAGING_API_URL: "http://e4l-backend-staging:8080"
+  script:
+    # 1. Update Postman Env to point to the Container Name (Docker DNS)
+    #    We replace 'localhost:8084' with 'e4l-backend-staging:8080'
+    - sed -i "s|http://localhost:8084|$STAGING_API_URL|g" tests/postman/staging.environment.json
+
+    #2. Check if backend is up before testing
+    - docker run --rm --network e4l-db-net curlimages/curl --fail --retry 10 --retry-delay 5 --retry-connrefused http://e4l-backend-staging:8080/e4lapi/questionnaire
+
+    # 3. Create the Newman container (Created, but not started yet)
+    #    We give it a unique name using $CI_JOB_ID so we can refer to it
+    - docker create --name "newman-$CI_JOB_ID" --network e4l-db-net postman/newman:5-alpine run /etc/newman/e4l-backend-e2e.collection.json -e /etc/newman/staging.environment.json
+
+    # 4. Copy files into the container (Bypasses the Volume/Path issue)
+    - docker cp "$CI_PROJECT_DIR/tests/postman/." "newman-$CI_JOB_ID:/etc/newman/"
+
+    # 5. Run the tests (Attach output so we see the results)
+    - docker start -a "newman-$CI_JOB_ID"
+
+  after_script:
+    # Always cleanup the container, even if tests fail
+    - docker rm -f "newman-$CI_JOB_ID" || true
+
+
+# 5. Deploy to Prod (Manual Trigger)
+deploy_prod:
+  rules:
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+  stage: deploy_production
+  needs:
+    - e2e_acceptance_tests
+  image: docker:29.0.1
+  variables:
+    DOCKER_HOST: "unix:///var/run/docker.sock"
+    DOCKER_TLS_CERTDIR: ""
+    CI_REGISTRY: "localhost:5050"
+  before_script:
+    - echo "$CI_REGISTRY_PASSWORD" | docker login -u "$CI_REGISTRY_USER" --password-stdin "$CI_REGISTRY"
+    # create network if does not exist
+    - docker network create e4l-db-net || true
+  script:
+    - echo "Deploying to Production..."
+    - docker pull $CI_REGISTRY/testdev/backend:latest
+    - export BACKEND_IMAGE=$CI_REGISTRY/testdev/backend:latest
+    - cp docker/.env.prod docker/.env
+    - cd docker
+    - docker compose -f docker-compose.db.yml up -d
+    - docker compose -f docker-compose.backend.prod.yml up -d --force-recreate
+  environment:
+    name: production
+    url: http://localhost:8085
+  # when: manual

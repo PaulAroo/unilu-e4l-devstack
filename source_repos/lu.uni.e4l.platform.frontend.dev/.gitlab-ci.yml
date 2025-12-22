@@ -1,0 +1,157 @@
+before_script:
+  - export CURRENT_DATETIME=`date +"%Y%m%d-%H%M%S"`
+
+# Shared
+image: node:22
+
+variables:
+  DOCKER_HOST: "unix:///var/run/docker.sock"
+  DOCKER_TLS_CERTDIR: ""
+  CI_REGISTRY: "localhost:5050"
+
+.before_npm: &before_npm
+  before_script:
+    - npm ci
+
+stages:
+  - build              # webpack build
+  - test               # unit + integration
+  - package            # docker build/push
+  - deploy_staging     # deploy image to staging
+  - acceptance_tests   # run e2e on staging
+  - deploy_prod        # manual prod deploy
+
+# 1. Build
+build:
+  stage: build
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+  <<: *before_npm
+  script:
+    - npm run build
+  cache:
+    key: "$CI_COMMIT_REF_NAME"
+    paths:
+      - node_modules
+  artifacts:
+    paths:
+      - e4l.frontend.docker/web/dist
+    expire_in: 2h
+
+# 2a. Unit tests
+unit_tests:
+  stage: test
+  needs: ["build"]
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+  <<: *before_npm
+  script:
+    - npm run test:unit:ci
+  artifacts:
+    when: always
+    reports:
+      junit: coverage/junit-unit.xml
+
+# 2b. Integration tests
+integration_tests:
+  stage: test
+  needs: ["build"]
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+  <<: *before_npm
+  script:
+    - npm run test:integration:ci
+  artifacts:
+    when: always
+    reports:
+      junit: coverage/junit-integration.xml
+
+# 3. Docker build & push
+docker_build:
+  stage: package
+  image: docker:29.0.1
+  needs: ["build", "unit_tests", "integration_tests"]
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+  before_script:
+    - echo "$CI_REGISTRY_PASSWORD" | docker login -u "$CI_REGISTRY_USER" --password-stdin "$CI_REGISTRY"
+  script:
+    - docker build -t $CI_REGISTRY/testdev/frontend:$CI_COMMIT_SHORT_SHA -t $CI_REGISTRY/testdev/frontend:latest ./e4l.frontend.docker/web
+    - docker push $CI_REGISTRY/testdev/frontend:$CI_COMMIT_SHORT_SHA
+    - docker push $CI_REGISTRY/testdev/frontend:latest
+
+# 4. Deploy to staging
+deploy_staging:
+  stage: deploy_staging
+  image: docker:29.0.1
+  needs: ["docker_build"]
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+  before_script:
+    - echo "$CI_REGISTRY_PASSWORD" | docker login -u "$CI_REGISTRY_USER" --password-stdin "$CI_REGISTRY"
+    # Ensure the bridge network exists
+    - docker network create e4l-db-net || true
+  script:
+    - echo "Deploying frontend to Staging..."
+    - docker pull $CI_REGISTRY/testdev/frontend:latest
+    - export CI_REGISTRY_IMAGE=$CI_REGISTRY/testdev/frontend:latest
+    - cd e4l.frontend.docker
+    - docker compose -f docker-compose.frontend.staging.yml up -d --force-recreate
+  environment:
+    name: staging
+    url: http://localhost:8881
+
+# 5. Acceptance (E2E) tests on staging
+acceptance_tests:
+  stage: acceptance_tests
+  needs: ["deploy_staging"]
+  image: docker:29.0.1
+  variables:
+    DOCKER_HOST: "unix:///var/run/docker.sock"
+    E2E_BASE_URL: "http://e4l-frontend-staging:80"
+  rules:
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+  script:
+    # 1. Check if frontend is up before testing
+    - docker run --rm --network e4l-db-net curlimages/curl --fail --retry 10 --retry-delay 5 --retry-connrefused $E2E_BASE_URL
+
+    # 2. Create the E2E test container (with Puppeteer support)
+    - docker create --name "e2e-$CI_JOB_ID" --network e4l-db-net -w /workspace -e E2E_BASE_URL=$E2E_BASE_URL node:22-bullseye bash -c "apt-get update && apt-get install -y chromium libxss1 libxtst6 libnss3 libnspr4 libasound2 libatk-bridge2.0-0 libgtk-3-0 libgbm1 && npm ci && npm run test:e2e:ci"
+
+    # 3. Copy project files into the container
+    - docker cp "$CI_PROJECT_DIR/." "e2e-$CI_JOB_ID:/workspace"
+
+    # 4. Set working directory and run the tests
+    - docker start -a "e2e-$CI_JOB_ID"
+
+  after_script:
+    # Always cleanup the container, even if tests fail
+    - docker rm -f "e2e-$CI_JOB_ID" || true
+
+# 6. Deploy to production (manual)
+deploy_prod:
+  stage: deploy_prod
+  image: docker:29.0.1
+  needs: ["acceptance_tests"]
+  rules:
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+  when: manual
+  before_script:
+    - echo "$CI_REGISTRY_PASSWORD" | docker login -u "$CI_REGISTRY_USER" --password-stdin "$CI_REGISTRY"
+    - docker network create e4l-db-net || true
+  script:
+    - echo "Deploying frontend to Production..."
+    - docker pull $CI_REGISTRY/testdev/frontend:latest
+    - docker tag $CI_REGISTRY/testdev/frontend:latest $CI_REGISTRY/testdev/frontend:release
+    - docker push $CI_REGISTRY/testdev/frontend:release
+    - export CI_REGISTRY_IMAGE=$CI_REGISTRY/testdev/frontend:release
+    - cd e4l.frontend.docker
+    - docker compose -f docker-compose.frontend.prod.yml up -d --force-recreate
+  environment:
+    name: prod
+    url: http://localhost:8882

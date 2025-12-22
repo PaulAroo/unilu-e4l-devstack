@@ -1,0 +1,27 @@
+{
+  "presets": [
+    ["env", {
+      "useBuiltIns": "entry",
+      "modules": false 
+    }],
+    "react"
+  ],
+  "plugins": [
+    "transform-decorators-legacy",
+    "transform-class-properties",
+    "transform-object-rest-spread"
+  ],
+  "env": {
+    "test": {
+      "presets": [
+        ["env", { "targets": { "node": "current" } }],
+        "react"
+      ],
+      "plugins": [
+        "transform-decorators-legacy",
+        "transform-class-properties",
+        "transform-object-rest-spread"
+      ]
+    }
+  }
+}

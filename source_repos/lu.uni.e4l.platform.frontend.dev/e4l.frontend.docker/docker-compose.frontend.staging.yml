@@ -1,0 +1,19 @@
+services:
+  e4l-frontend-staging:
+    restart: always
+    image: ${CI_REGISTRY_IMAGE}
+    container_name: e4l-frontend-staging
+    ports:
+      - "8881:80"
+    volumes:
+      - /opt/e4l-news:/usr/share/nginx/news
+    environment:
+      - PUBLIC_PATH=
+      - API_URL=http://e4l-backend-staging:8080/e4lapi
+      - TZ=Europe/Luxembourg
+    networks:
+      - e4l-db-net
+
+networks:
+  e4l-db-net:
+    external: true
