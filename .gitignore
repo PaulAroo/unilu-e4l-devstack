@@ -17,8 +17,8 @@ Thumbs.db
 *.iml
 
 # Env files
-**/.env
-**/.env.*
+# **/.env
+# **/.env.*
 
 # Docker compose overrides
 **/docker-compose.override.yml
