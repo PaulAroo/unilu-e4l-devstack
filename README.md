@@ -28,16 +28,36 @@ docker compose -f docker-compose.gitlab.yml up -d
 ```
 - UI: `http://localhost:8929`
 - Registry: `http://localhost:5050`
+- Login: `testdev` / `vx6Yo1Mnmn4q7D4Q`
+
+Make scripts executable (one-time):
+```bash
+chmod +x scripts/*.sh
+```
 
 Run helper scripts in order:
 
 ```bash
-sh scripts/setup_integration_server.sh         # waits until healthy
-sh scripts/setup_users_and_projects.sh         # creates testdev + projects
-sh scripts/register_runner.sh                  # registers docker runner
+./scripts/setup_integration_server.sh         # waits until healthy
+./scripts/setup_users_and_projects.sh         # creates testdev + projects
+./scripts/register_runner.sh                  # registers docker runner
 ```
 
-### 4) Use local modified source repos
+### 4) Seed pipelines
+Push the modified source repos to GitLab to trigger pipelines:
+
+```bash
+./scripts/seed_repos.sh
+```
+
+This pushes `source_repos/lu.uni.e4l.platform.api.dev` → `testdev/backend` and `source_repos/lu.uni.e4l.platform.frontend.dev` → `testdev/frontend`.
+
+Verify pipelines:
+- Backend: `http://localhost:8929/testdev/backend/-/pipelines`
+- Frontend: `http://localhost:8929/testdev/frontend/-/pipelines`
+- Login: `testdev` / `vx6Yo1Mnmn4q7D4Q`
+
+### 5) Use local modified source repos
 Do NOT re-clone external repos. Use:
 - Backend: `source_repos/lu.uni.e4l.platform.api.dev`
 - Frontend: `source_repos/lu.uni.e4l.platform.frontend.dev`
@@ -46,7 +66,7 @@ Both repos already include tuned `.gitlab-ci.yml` files:
 - Pipeline stages: build → unit/integration → docker build/push → deploy staging → acceptance tests → manual prod
 - Networking via shared bridge `e4l-db-net` using container names (no localhost inside CI)
 
-### 5) Staging environment (local containers)
+### 6) Staging environment (local containers)
 Create shared network + DB from backend repo:
 
 ```bash
@@ -73,14 +93,14 @@ curl -f http://localhost:8084/e4lapi/questionnaire
 curl -f http://localhost:8881
 ```
 
-### 6) CI/CD overview
+### 7) CI/CD overview
 - Runner uses Docker socket (not DinD).
 - Images are built and pushed to `localhost:5050/testdev/{backend|frontend}:{latest|release}`.
 - Deploy jobs use compose files referencing the pushed image via `CI_REGISTRY_IMAGE`.
 - Acceptance tests run a container in `e4l-db-net`, hitting `http://e4l-frontend-staging:80`.
 - Production deploy is manual and promotes `latest` → `release` tag.
 
-### 7) Local development
+### 8) Local development
 Frontend dev server:
 ```bash
 cd source_repos/lu.uni.e4l.platform.frontend.dev
@@ -95,13 +115,13 @@ npm run test:integration:ci
 npm run test:e2e:ci    # E2E_BASE_URL defaults to http://localhost:8080
 ```
 
-### 8) Cleanup
+### 9) Cleanup
 Use the updated cleanup script which tears down GitLab, Backend, Frontend, networks, and optionally local images/data:
 ```bash
-sh scripts/cleanup.sh
+./scripts/cleanup.sh
 ```
 
-### 9) Troubleshooting
+### 10) Troubleshooting
 - If acceptance tests can’t resolve `e4l-frontend-staging`, ensure `e4l-db-net` exists and the job uses `docker:29.0.1` image.
 - If Puppeteer fails to launch, ensure the container installs Chromium + required system libs (already handled in CI).
 - If compose pulls fail, confirm Docker daemon has `insecure-registries: ["localhost:5050"]` and Docker was restarted.
