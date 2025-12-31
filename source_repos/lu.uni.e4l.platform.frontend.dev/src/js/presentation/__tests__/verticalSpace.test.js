@@ -13,7 +13,7 @@ describe('VerticalSpace Component', () => {
 
     it('renders empty div if no height provided', () => {
        const wrapper = shallow(<VerticalSpace />);
-       // height will be "undefinedem" based on your code, checking it renders without crashing
+       // height will be "undefinedem", checking it renders without crashing
        expect(wrapper.exists()).toBe(true);
     });
 });

@@ -16,22 +16,17 @@ describe("Integration: Redux Data Flow", () => {
 
   beforeEach(() => {
     // We create a REAL Redux store using the REAL application reducers
-    // This integrates all your reducer files (user, nav, questionnaire, etc.)
+    // This integrates all reducer files (user, nav, questionnaire, etc.)
     store = createStore(rootReducer);
   });
 
   it("should handle the full flow of changing language", () => {
-    // 1. Check Initial State
-    // The default language in userReducer is "en"
+
     expect(store.getState().userReducer.lang).toEqual("en");
 
-    // 2. Dispatch an Action
-    // We use the real Action Creator from your application
     const action = changeWebsiteLanguage("fr");
     store.dispatch(action);
 
-    // 3. Verify Integration
-    // The store should have processed the action through the userReducer
     const updatedState = store.getState();
     expect(updatedState.userReducer.lang).toEqual("fr");
   });
