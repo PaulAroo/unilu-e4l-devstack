@@ -42,58 +42,58 @@ Docker Configuration (REQUIRED):
   Enable insecure local registry before running setup scripts.
   GitLab's registry runs at http://localhost:5050 without HTTPS.
 
-  Run these commands:
-    sudo sh -c 'cat > /etc/docker/daemon.json <<EOF
-    {
-      "insecure-registries": ["localhost:5050"]
-    }
-    EOF'
-    sudo systemctl restart docker
+Run these commands:
+
+sudo tee /etc/docker/daemon.json > /dev/null <<EOF
+{
+  "insecure-registries": ["localhost:5050"]
+}
+EOF
+
+sudo systemctl restart docker
 
 
-ARCHITECTURE
-------------
+ARCHITECTURE - THREE ENVIRONMENTS
+──────────────────────────────────
 
-    ┌─────────────────────────────────────────────────────────────────────┐
-    │                        HOST MACHINE                                 │
-    │                                                                     │
-    │  ┌───────────────────────────────────────────────────────────────┐  │
-    │  │              GITLAB CE (localhost:8929)                       │  │
-    │  │  ┌─────────────┐  ┌─────────────┐  ┌─────────────────────┐    │  │
-    │  │  │   Backend   │  │  Frontend   │  │  Docker Registry    │    │  │
-    │  │  │    Repo     │  │    Repo     │  │  (localhost:5050)   │    │  │
-    │  │  └──────┬──────┘  └──────┬──────┘  └─────────────────────┘    │  │
-    │  │         │                │                                    │  │
-    │  │         └────────┬───────┘                                    │  │
-    │  │                  ▼                                            │  │
-    │  │         ┌─────────────────┐                                   │  │
-    │  │         │  GitLab Runner  │  (Docker executor)                │  │
-    │  │         └────────┬────────┘                                   │  │
-    │  └──────────────────┼────────────────────────────────────────────┘  │
-    │                     │                                               │
-    │                     ▼                                               │
-    │  ┌──────────────────────────────────────────────────────────────┐   │
-    │  │               SHARED NETWORK (e4l-db-net)                    │   │
-    │  │                                                              │   │
-    │  │   ┌────────────────────────┐    ┌────────────────────────┐   │   │
-    │  │   │      STAGING ENV       │    │    PRODUCTION ENV      │   │   │
-    │  │   │                        │    │                        │   │   │
-    │  │   │  ┌──────────────────┐  │    │  ┌──────────────────┐  │   │   │
-    │  │   │  │ Frontend :8881   │  │    │  │ Frontend :8882   │  │   │   │
-    │  │   │  │ (Nginx + React)  │  │    │  │ (Nginx + React)  │  │   │   │
-    │  │   │  └──────────────────┘  │    │  └──────────────────┘  │   │   │
-    │  │   │           │            │    │           │            │   │   │
-    │  │   │  ┌──────────────────┐  │    │  ┌──────────────────┐  │   │   │
-    │  │   │  │ Backend  :8084   │  │    │  │ Backend  :8085   │  │   │   │
-    │  │   │  │ (Spring Boot)    │  │    │  │ (Spring Boot)    │  │   │   │
-    │  │   │  └──────────────────┘  │    │  └──────────────────┘  │   │   │
-    │  │   │           │            │    │           │            │   │   │
-    │  │   │  ┌──────────────────┐  │    │  ┌──────────────────┐  │   │   │
-    │  │   │  │ MariaDB (e4l_stg)│  │    │  │MariaDB (e4l_prod)│  │   │   │
-    │  │   │  └──────────────────┘  │    │  └──────────────────┘  │   │   │
-    │  │   └────────────────────────┘    └────────────────────────┘   │   │
-    │  └──────────────────────────────────────────────────────────────┘   │
-    └─────────────────────────────────────────────────────────────────────┘
+┌─────────────────────────────────────────────────────────────────────────┐
+│                           HOST MACHINE                                  │
+│  ┌────────────────────────────────────────────────────────────────────┐ │
+│  │  DEV ENVIRONMENT (Developer Workstation)                           │ │
+│  │                                                                    │ │
+│  │    ┌──────────────┐   ┌──────────────┐   ┌──────────────┐          │ │
+│  │    │   IDE        │   │  Backend     │   │  Frontend    │          │ │
+│  │    │   Git CLI    │   │  :8080       │   │  :3000       │          │ │
+│  │    └──────────────┘   └──────────────┘   └──────────────┘          │ │
+│  │                              │                                     │ │
+│  └──────────────────────────────┼─────────────────────────────────────┘ │
+│                                 ▼ git push                              │
+│  ┌────────────────────────────────────────────────────────────────────┐ │
+│  │  INTEGRATION (GitLab :8929 + Registry :5050)                       │ │
+│  │                           ┌───────────────┐                        │ │
+│  │                           │ PIPELINE FLOW │                        │ │
+│  │                           └───────────────┘                        │ │
+│  └────────────────────────────────────────────────────────────────────┘ │
+│                                                                         │
+│  ┌──────────────────────────────┐  ┌──────────────────────────────┐     │
+│  │     STAGING ENVIRONMENT      │  │    PRODUCTION ENVIRONMENT    │     │
+│  │                              │  │                              │     │
+│  │  ┌────────────────────────┐  │  │  ┌────────────────────────┐  │     │
+│  │  │ Frontend (Nginx) :8881 │  │  │  │ Frontend (Nginx) :8882 │  │     │
+│  │  └───────────┬────────────┘  │  │  └───────────┬────────────┘  │     │
+│  │              ▼               │  │              ▼               │     │
+│  │  ┌────────────────────────┐  │  │  ┌────────────────────────┐  │     │
+│  │  │ Backend (Spring) :8084 │  │  │  │ Backend (Spring) :8085 │  │     │
+│  │  └───────────┬────────────┘  │  │  └───────────┬────────────┘  │     │
+│  │              ▼               │  │              ▼               │     │
+│  │  ┌────────────────────────┐  │  │  ┌────────────────────────┐  │     │
+│  │  │ MariaDB (e4l_stg)      │  │  │  │ MariaDB (e4l_prod)     │  │     │
+│  │  └────────────────────────┘  │  │  └────────────────────────┘  │     │
+│  │                              │  │                              │     │
+│  │  E2E Tests: Postman,         │  │  Live Application            │     │
+│  │  Puppeteer                   │  │                              │     │
+│  └──────────────────────────────┘  └──────────────────────────────┘     │
+└─────────────────────────────────────────────────────────────────────────┘
 
 
 PIPELINE FLOW
@@ -118,6 +118,8 @@ AUTOMATED SETUP (4 Scripts)
 ----------------------------
 Run these commands in sequence from the project root:
 
+Make scripts executable (chmod +x scripts/*.sh)
+
   1. ./scripts/setup_integration_server.sh
      - Starts GitLab CE + Docker Registry
      - Waits for GitLab to be healthy
@@ -135,6 +137,13 @@ Run these commands in sequence from the project root:
      - Pushes backend (Java/Spring) source code to GitLab
      - Pushes frontend (React/Node) source code to GitLab
      - Triggers first pipeline run
+
+Alternatively, these commands can be chained:
+
+./scripts/setup_integration_server.sh && \
+./scripts/setup_users_and_projects.sh && \
+./scripts/register_runner.sh && \
+./scripts/seed_repos.sh
 
 
 VERIFY SETUP - URLs TO VISIT

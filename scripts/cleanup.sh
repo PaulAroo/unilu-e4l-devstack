@@ -68,7 +68,7 @@ echo "=== Optional destructive cleanup ==="
 echo "WARNING: The following will delete Runner config and all GitLab data (projects, users, logs)."
 read -p "Remove runner-config folder (y/N)? " rm_runner
 if [[ ${rm_runner:-N} =~ ^[yY](es)?$ ]]; then
-    rm -rf "$ROOT_DIR/runner-config"
+    sudo rm -rf "$ROOT_DIR/runner-config"
     echo "runner-config removed."
 else
     echo "Skipped runner-config removal."

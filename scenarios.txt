@@ -27,7 +27,6 @@ Verify that backend unit tests pass in the CI/CD pipeline.
 2. Click on the latest pipeline
 3. View the "test" stage → "unit-test" job
 4. Observe job passes (green checkmark)
-5. Log shows: "CalculatorServiceTest > calculate PASSED"
 
 ## Test File
 src/test/java/lu/uni/e4l/platform/service/CalculatorServiceTest.java
@@ -56,7 +55,6 @@ Demonstrate that the pipeline fails when a unit test fails.
 6. Commit changes (triggers pipeline)
 7. Go to: http://localhost:8929/testdev/backend/-/pipelines
 8. Observe pipeline fails at "unit-test" job (red X)
-9. Log shows: "expected:<-999.0> but was:<-7.0>"
 
 ## Restore
 Change -999d back to -7d and commit.
@@ -79,7 +77,6 @@ Verify that backend integration tests (JPA + Database) pass in the CI/CD pipelin
 2. Click on the latest pipeline
 3. View the "test" stage → "integration-test" job
 4. Observe job passes (green checkmark)
-5. Log shows: "UserRepositoryIT > shouldPersistAndLoadUser() PASSED"
 
 ## Test File
 src/integrationTest/java/lu/uni/e4l/platform/UserRepositoryIT.java
@@ -108,7 +105,6 @@ Demonstrate that the pipeline fails when an integration test fails.
 6. Commit changes (triggers pipeline)
 7. Go to: http://localhost:8929/testdev/backend/-/pipelines
 8. Observe pipeline fails at "integration-test" job (red X)
-9. Log shows: "expected: 'wrong@email.com' but was: 'integration@test.lu'"
 
 ## Restore
 Change back to "integration@test.lu" and commit.
@@ -174,7 +170,7 @@ Change 404 back to 200 and commit.
 
 
 ================================================================================
-FRONTEND TESTS (React/Node.js)
+FRONTEND TESTS (React)
 ================================================================================
 
 # Scenario 7: Frontend Unit Test - PASSING

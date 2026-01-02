@@ -30,12 +30,13 @@ build_job:
 
 # 2a. Run Unit Tests
 unit_tests:
+  needs: ["build_job"]
   rules:
     - if: $CI_PIPELINE_SOURCE == 'merge_request_event'
     - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
   image: gradle:8.3
   stage: test
-  script: gradle clean test
+  script: gradle test
   cache:
     key: "$CI_COMMIT_REF_NAME"
     policy: pull
@@ -49,6 +50,7 @@ unit_tests:
 
 # 2b. Integration tests (backend+DB(H2), separate Gradle task)
 integration_tests:
+  needs: ["unit_tests"]
   rules:
     - if: $CI_PIPELINE_SOURCE == 'merge_request_event'
     - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
